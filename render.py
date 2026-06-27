@@ -5,7 +5,7 @@ import time
 import urllib.parse
 
 from config import env_int
-from db import counts_by_media, latest_posts, top_hashtags
+from db import counts_by_media, latest_posts, top_hashtags, top_reels
 from poller import STATE
 from trends import compute_trends
 
@@ -18,6 +18,16 @@ def _chip(term, count, active=False):
         f'<a class="{cls}" href="{href}">{html.escape(term)}'
         f'<i>{count}</i></a>'
     )
+
+
+def _fmt_num(n):
+    """Formatea números grandes: 1200 -> 1.2K, 3400000 -> 3.4M."""
+    n = n or 0
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K".replace(".0K", "K")
+    return str(n)
 
 
 def _fmt_age(ts, now):
@@ -47,9 +57,16 @@ def _card(row, now):
 
     age = _fmt_age(max(row["created_ts"], row["inserted_at"]), now)
     badge = {"video": "🎥 video", "image": "🖼️ imagen"}.get(media_type, "📝 texto")
-    likes = row["likes"] if "likes" in row.keys() else 0
-    comments = row["comments"] if "comments" in row.keys() else 0
-    engagement = f'<span class="eng">❤ {likes} · 💬 {comments}</span>' if (likes or comments) else ""
+    keys = row.keys()
+    likes = row["likes"] if "likes" in keys else 0
+    comments = row["comments"] if "comments" in keys else 0
+    views = row["views"] if "views" in keys else 0
+    parts = []
+    if views:
+        parts.append(f"▶ {_fmt_num(views)}")
+    if likes or comments:
+        parts.append(f"❤ {_fmt_num(likes)} · 💬 {_fmt_num(comments)}")
+    engagement = f'<span class="eng">{" · ".join(parts)}</span>' if parts else ""
     return f"""
     <article>
       <div class="meta">
@@ -107,6 +124,7 @@ def render_dashboard(db_path, query=None):
     categories = top_hashtags(db_path, since_ts=since_ts, limit=20)
 
     counts = counts_by_media(db_path, since_ts=since_ts, query=query)
+    reels = top_reels(db_path, since_ts=since_ts, limit=15)
     videos = latest_posts(db_path, limit=30, media_type="video", since_ts=since_ts, query=query)
     images = latest_posts(db_path, limit=30, media_type="image", since_ts=since_ts, query=query)
     recent = latest_posts(db_path, limit=60, since_ts=since_ts, query=query)
@@ -186,6 +204,7 @@ small {{ color:#5f6368; }}
     {_trending_html(trends, active=query)}
   </section>
 
+  {_section("🎬 Reels más vistos", reels, now, empty="Sin reels todavía.")}
   {_section("🎥 Videos", videos, now)}
   {_section("🖼️ Imágenes", images, now)}
   {_section("🕒 Todo lo reciente", recent, now)}

@@ -67,9 +67,9 @@ def compute_trends(db_path, window_hours=24, half_life_hours=6, limit=15, now=No
     counts = {}
     for row in rows:
         ts = max(row["created_ts"], row["inserted_at"])
-        # Peso = recencia × impulso por engagement (likes + comentarios).
-        engagement = (row["likes"] or 0) + (row["comments"] or 0)
-        weight = _recency_weight(now - ts, half_life_hours) * (1 + math.log1p(engagement))
+        # Peso = recencia × impulso por engagement (likes + comentarios + vistas).
+        signal = (row["likes"] or 0) + (row["comments"] or 0) + (row["views"] or 0)
+        weight = _recency_weight(now - ts, half_life_hours) * (1 + math.log1p(signal))
         for token in set(tokenize(row["text"])):
             scores[token] = scores.get(token, 0.0) + weight
             counts[token] = counts.get(token, 0) + 1

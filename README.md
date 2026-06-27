@@ -36,6 +36,17 @@ python3 app.py --self-test
 6. **Muestra** — dashboard auto-refrescante con resumen, tendencias, categorías
    y secciones por tipo de media. También expone `GET /api/trends` (JSON).
 
+### Reels y vistas
+
+El dashboard tiene una sección **🎬 Reels más vistos**. El pipeline captura el
+número de reproducciones (`videoViewCount` / `videoPlayCount`) cuando la fuente
+lo entrega, y rankea por vistas; si no hay vistas, cae a likes + comentarios.
+
+> Aviso: el scraper de Instagram por **hashtag** (actor `APIFY` por defecto) no
+> devuelve el contador de vistas. Para tener vistas reales de reels, registra una
+> segunda fuente con un actor especializado en reels (ver más abajo) que sí
+> exponga `videoViewCount`/`videoPlayCount`.
+
 ### Múltiples fuentes
 
 `apify.py` define las fuentes en `SOURCES` como `(nombre, prefijo_env)`. Cada

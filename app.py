@@ -7,7 +7,7 @@ import threading
 from http.server import ThreadingHTTPServer
 
 from config import env_int, load_env
-from db import init_db, latest_posts, save_posts, top_hashtags
+from db import init_db, latest_posts, save_posts, top_hashtags, top_reels
 from normalize import detect_media, extract_hashtags, fold, normalize
 from poller import poll_loop
 from server import Handler
@@ -46,9 +46,17 @@ def self_test():
         assert extract_hashtags({"hashtags": ["últimahora", "ultimahora", "venezuela🇻🇪"]}, "") \
             == "#ultimahora #venezuela"
 
-        # Mejora 2: engagement capturado en la normalización.
+        # Mejora 2: engagement (incluye vistas) capturado en la normalización.
         n = normalize("instagram", {"id": "9", "likesCount": 10, "commentsCount": 5})
         assert (n["likes"], n["comments"]) == (10, 5)
+
+        # Reels: detección de video con vistas y ranking por más vistos.
+        reel = normalize("instagram", {"id": "r1", "type": "Video", "videoUrl": "r.mp4",
+                                        "caption": "reel viral", "videoViewCount": 5000})
+        assert (reel["media_type"], reel["views"]) == ("video", 5000)
+        save_posts(db, [reel])
+        top = top_reels(db)
+        assert top and top[0]["external_id"] == "r1" and top[0]["views"] == 5000
 
         # Mejora 3: upsert actualiza un post existente sin contarlo como nuevo.
         base = {"id": "up", "caption": "hola", "likesCount": 1}

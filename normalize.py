@@ -11,6 +11,20 @@ from datetime import datetime, timezone
 
 HASHTAG_RE = re.compile(r"#([\wáéíóúñü]+)", re.UNICODE)
 
+# Nombres de campo de engagement según la fuente (Instagram, X, etc.).
+LIKE_FIELDS = ["likesCount", "likes", "likeCount", "favorite_count"]
+COMMENT_FIELDS = ["commentsCount", "comments", "commentCount", "reply_count"]
+VIEW_FIELDS = ["videoViewCount", "videoPlayCount", "playCount", "viewCount", "videoViews"]
+
+
+def engagement(item):
+    """Devuelve (likes, comments, views) del item de forma segura."""
+    return (
+        to_int(pick(item, LIKE_FIELDS)),
+        to_int(pick(item, COMMENT_FIELDS)),
+        to_int(pick(item, VIEW_FIELDS)),
+    )
+
 
 def fold(text):
     """Normaliza para agrupar: minúsculas, sin acentos ni emojis/símbolos.
@@ -145,6 +159,7 @@ def normalize(source, item):
     created_at = pick(item, ["created_at", "timestamp", "takenAt", "date"])
     media_type, media_url = detect_media(item)
     text = pick(item, ["text", "caption", "description"])
+    likes, comments, views = engagement(item)
 
     return {
         "source": source,
@@ -158,7 +173,8 @@ def normalize(source, item):
         "location": pick(item, ["location", "place", "address"]),
         "media_type": media_type,
         "media_url": media_url,
-        "likes": to_int(pick(item, ["likesCount", "likes", "likeCount", "favorite_count"])),
-        "comments": to_int(pick(item, ["commentsCount", "comments", "commentCount", "reply_count"])),
+        "likes": likes,
+        "comments": comments,
+        "views": views,
         "raw_json": json.dumps(item, ensure_ascii=False),
     }

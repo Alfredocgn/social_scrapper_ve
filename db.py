@@ -5,7 +5,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from normalize import detect_media, extract_hashtags, pick, to_int
+from normalize import detect_media, engagement, extract_hashtags
 
 # Columnas que pueden faltar en bases creadas con versiones anteriores.
 MIGRATIONS = {
@@ -15,6 +15,7 @@ MIGRATIONS = {
     "hashtags": "alter table posts add column hashtags text not null default ''",
     "likes": "alter table posts add column likes integer not null default 0",
     "comments": "alter table posts add column comments integer not null default 0",
+    "views": "alter table posts add column views integer not null default 0",
     "updated_at": "alter table posts add column updated_at integer not null default 0",
 }
 
@@ -47,6 +48,7 @@ def init_db(path):
             hashtags text not null default '',
             likes integer not null default 0,
             comments integer not null default 0,
+            views integer not null default 0,
             raw_json text not null,
             inserted_at integer not null,
             updated_at integer not null default 0,
@@ -77,8 +79,8 @@ def _backfill(con):
     """
     con.row_factory = sqlite3.Row
     rows = con.execute(
-        "select id, text, hashtags, media_type, media_url, likes, comments, raw_json "
-        "from posts"
+        "select id, text, hashtags, media_type, media_url, likes, comments, views, "
+        "raw_json from posts"
     ).fetchall()
     for row in rows:
         try:
@@ -87,15 +89,15 @@ def _backfill(con):
             continue
         tags = extract_hashtags(item, row["text"])
         media_type, media_url = detect_media(item)
-        likes = to_int(pick(item, ["likesCount", "likes", "likeCount", "favorite_count"]))
-        comments = to_int(pick(item, ["commentsCount", "comments", "commentCount", "reply_count"]))
-        nuevo = (tags, media_type, media_url, likes, comments)
-        actual = (row["hashtags"], row["media_type"], row["media_url"], row["likes"], row["comments"])
+        likes, comments, views = engagement(item)
+        nuevo = (tags, media_type, media_url, likes, comments, views)
+        actual = (row["hashtags"], row["media_type"], row["media_url"],
+                  row["likes"], row["comments"], row["views"])
         if nuevo != actual:
             con.execute(
-                "update posts set hashtags=?, media_type=?, media_url=?, likes=?, comments=? "
-                "where id=?",
-                (tags, media_type, media_url, likes, comments, row["id"]),
+                "update posts set hashtags=?, media_type=?, media_url=?, likes=?, "
+                "comments=?, views=? where id=?",
+                (tags, media_type, media_url, likes, comments, views, row["id"]),
             )
 
 
@@ -123,6 +125,7 @@ def save_posts(db_path, posts):
             p.get("hashtags", ""),
             p.get("likes", 0),
             p.get("comments", 0),
+            p.get("views", 0),
             p["raw_json"],
             now,
             now,
@@ -135,9 +138,9 @@ def save_posts(db_path, posts):
         """
         insert into posts
         (source, external_id, author, text, url, created_at, created_ts,
-         location, media_type, media_url, hashtags, likes, comments,
+         location, media_type, media_url, hashtags, likes, comments, views,
          raw_json, inserted_at, updated_at)
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         on conflict(source, external_id) do update set
             text=excluded.text,
             media_type=excluded.media_type,
@@ -145,6 +148,7 @@ def save_posts(db_path, posts):
             hashtags=excluded.hashtags,
             likes=excluded.likes,
             comments=excluded.comments,
+            views=excluded.views,
             raw_json=excluded.raw_json,
             updated_at=excluded.updated_at
         """,
@@ -205,9 +209,22 @@ def posts_for_text(db_path, since_ts=0):
     """Devuelve filas para análisis de tendencias (texto, fechas, engagement)."""
     con = connect(db_path)
     rows = con.execute(
-        "select text, created_ts, inserted_at, likes, comments from posts "
+        "select text, created_ts, inserted_at, likes, comments, views from posts "
         "where max(created_ts, inserted_at) >= ?",
         (since_ts,),
+    ).fetchall()
+    con.close()
+    return rows
+
+
+def top_reels(db_path, since_ts=0, limit=15):
+    """Devuelve los videos (reels) más vistos dentro de la ventana de tiempo."""
+    con = connect(db_path)
+    rows = con.execute(
+        "select * from posts where media_type = 'video' "
+        "and max(created_ts, inserted_at) >= ? "
+        "order by views desc, likes + comments desc, id desc limit ?",
+        (since_ts, limit),
     ).fetchall()
     con.close()
     return rows
