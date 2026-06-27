@@ -4,6 +4,7 @@
 Cada término suma una puntuación que decae con la antigüedad del post, de modo
 que "lo más hablado recientemente" pese más que el volumen histórico.
 """
+import math
 import re
 import time
 
@@ -66,7 +67,9 @@ def compute_trends(db_path, window_hours=24, half_life_hours=6, limit=15, now=No
     counts = {}
     for row in rows:
         ts = max(row["created_ts"], row["inserted_at"])
-        weight = _recency_weight(now - ts, half_life_hours)
+        # Peso = recencia × impulso por engagement (likes + comentarios).
+        engagement = (row["likes"] or 0) + (row["comments"] or 0)
+        weight = _recency_weight(now - ts, half_life_hours) * (1 + math.log1p(engagement))
         for token in set(tokenize(row["text"])):
             scores[token] = scores.get(token, 0.0) + weight
             counts[token] = counts.get(token, 0) + 1

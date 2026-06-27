@@ -8,7 +8,7 @@ from http.server import ThreadingHTTPServer
 
 from config import env_int, load_env
 from db import init_db, latest_posts, save_posts, top_hashtags
-from normalize import detect_media, extract_hashtags, normalize
+from normalize import detect_media, extract_hashtags, fold, normalize
 from poller import poll_loop
 from server import Handler
 from trends import compute_trends
@@ -40,6 +40,23 @@ def self_test():
         # Hashtags: desde campo estructurado y desde texto.
         assert extract_hashtags({"hashtags": ["Sismo", "Venezuela"]}, "") == "#sismo #venezuela"
         assert extract_hashtags({}, "alerta #terremoto ya") == "#terremoto"
+
+        # Mejora 1: normalización une acentos/emoji y deduplica.
+        assert fold("ÚltimaHora") == "ultimahora"
+        assert extract_hashtags({"hashtags": ["últimahora", "ultimahora", "venezuela🇻🇪"]}, "") \
+            == "#ultimahora #venezuela"
+
+        # Mejora 2: engagement capturado en la normalización.
+        n = normalize("instagram", {"id": "9", "likesCount": 10, "commentsCount": 5})
+        assert (n["likes"], n["comments"]) == (10, 5)
+
+        # Mejora 3: upsert actualiza un post existente sin contarlo como nuevo.
+        base = {"id": "up", "caption": "hola", "likesCount": 1}
+        assert save_posts(db, [normalize("instagram", base)]) == 1
+        base["likesCount"] = 99
+        assert save_posts(db, [normalize("instagram", base)]) == 0
+        actualizado = next(r for r in latest_posts(db) if r["external_id"] == "up")
+        assert actualizado["likes"] == 99, actualizado["likes"]
 
         # Tendencias: el término del post debe aparecer.
         save_posts(

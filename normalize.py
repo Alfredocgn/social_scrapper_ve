@@ -6,9 +6,28 @@ post a timestamp epoch para poder ordenar por frescura real.
 """
 import json
 import re
+import unicodedata
 from datetime import datetime, timezone
 
 HASHTAG_RE = re.compile(r"#([\wáéíóúñü]+)", re.UNICODE)
+
+
+def fold(text):
+    """Normaliza para agrupar: minúsculas, sin acentos ni emojis/símbolos.
+
+    Une variantes como #últimahora/#ultimahora y #venezuela🇻🇪/#venezuela.
+    """
+    nfkd = unicodedata.normalize("NFKD", str(text).lower())
+    sin_acentos = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]", "", sin_acentos)
+
+
+def to_int(value):
+    """Convierte a entero de forma segura (0 si no es numérico)."""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def pick(obj, names):
@@ -77,14 +96,15 @@ def extract_hashtags(item, text):
     raw = item.get("hashtags")
     tags = []
     if isinstance(raw, list):
-        tags = [str(t).lstrip("#").lower() for t in raw if t]
+        tags = [str(t) for t in raw if t]
     if not tags:
-        tags = [m.lower() for m in HASHTAG_RE.findall(text or "")]
-    # Únicos preservando orden.
+        tags = HASHTAG_RE.findall(text or "")
+    # Normaliza (sin acentos/emoji) y deja únicos preservando orden.
     seen = []
     for tag in tags:
-        if tag and tag not in seen:
-            seen.append(tag)
+        folded = fold(tag)
+        if folded and folded not in seen:
+            seen.append(folded)
     return " ".join(f"#{tag}" for tag in seen)
 
 
@@ -138,5 +158,7 @@ def normalize(source, item):
         "location": pick(item, ["location", "place", "address"]),
         "media_type": media_type,
         "media_url": media_url,
+        "likes": to_int(pick(item, ["likesCount", "likes", "likeCount", "favorite_count"])),
+        "comments": to_int(pick(item, ["commentsCount", "comments", "commentCount", "reply_count"])),
         "raw_json": json.dumps(item, ensure_ascii=False),
     }

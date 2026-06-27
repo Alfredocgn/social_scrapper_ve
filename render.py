@@ -47,12 +47,15 @@ def _card(row, now):
 
     age = _fmt_age(max(row["created_ts"], row["inserted_at"]), now)
     badge = {"video": "🎥 video", "image": "🖼️ imagen"}.get(media_type, "📝 texto")
+    likes = row["likes"] if "likes" in row.keys() else 0
+    comments = row["comments"] if "comments" in row.keys() else 0
+    engagement = f'<span class="eng">❤ {likes} · 💬 {comments}</span>' if (likes or comments) else ""
     return f"""
     <article>
       <div class="meta">
         <span class="badge {media_type}">{badge}</span>
         <b>{html.escape(row['source'])}</b> @{html.escape(row['author'] or 'sin_autor')}
-        <span class="age">{age}</span> {link}
+        <span class="age">{age}</span> {engagement} {link}
       </div>
       {media_html}
       <p>{html.escape(row['text'] or '')}</p>
@@ -150,6 +153,7 @@ section h2 .count {{ color:#5f6368; font-weight:normal; }}
 article {{ background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:12px; }}
 article .meta {{ font-size:13px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }}
 article .age {{ color:#5f6368; }}
+article .eng {{ color:#5f6368; }}
 article img, article video {{ max-width:100%; border-radius:6px; margin:10px 0; }}
 .badge {{ font-size:12px; padding:2px 8px; border-radius:6px; background:#eee; }}
 .badge.video {{ background:#fee2e2; }}

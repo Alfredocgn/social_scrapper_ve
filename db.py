@@ -5,7 +5,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from normalize import detect_media, extract_hashtags
+from normalize import detect_media, extract_hashtags, pick, to_int
 
 # Columnas que pueden faltar en bases creadas con versiones anteriores.
 MIGRATIONS = {
@@ -13,6 +13,9 @@ MIGRATIONS = {
     "media_type": "alter table posts add column media_type text not null default 'text'",
     "media_url": "alter table posts add column media_url text not null default ''",
     "hashtags": "alter table posts add column hashtags text not null default ''",
+    "likes": "alter table posts add column likes integer not null default 0",
+    "comments": "alter table posts add column comments integer not null default 0",
+    "updated_at": "alter table posts add column updated_at integer not null default 0",
 }
 
 
@@ -42,8 +45,11 @@ def init_db(path):
             media_type text not null default 'text',
             media_url text not null default '',
             hashtags text not null default '',
+            likes integer not null default 0,
+            comments integer not null default 0,
             raw_json text not null,
             inserted_at integer not null,
+            updated_at integer not null default 0,
             unique(source, external_id)
         )
         """
@@ -71,24 +77,34 @@ def _backfill(con):
     """
     con.row_factory = sqlite3.Row
     rows = con.execute(
-        "select id, text, hashtags, media_type, media_url, raw_json from posts"
+        "select id, text, hashtags, media_type, media_url, likes, comments, raw_json "
+        "from posts"
     ).fetchall()
     for row in rows:
         try:
             item = json.loads(row["raw_json"])
         except (ValueError, TypeError):
             continue
-        tags = row["hashtags"] or extract_hashtags(item, row["text"])
+        tags = extract_hashtags(item, row["text"])
         media_type, media_url = detect_media(item)
-        if (tags, media_type, media_url) != (row["hashtags"], row["media_type"], row["media_url"]):
+        likes = to_int(pick(item, ["likesCount", "likes", "likeCount", "favorite_count"]))
+        comments = to_int(pick(item, ["commentsCount", "comments", "commentCount", "reply_count"]))
+        nuevo = (tags, media_type, media_url, likes, comments)
+        actual = (row["hashtags"], row["media_type"], row["media_url"], row["likes"], row["comments"])
+        if nuevo != actual:
             con.execute(
-                "update posts set hashtags = ?, media_type = ?, media_url = ? where id = ?",
-                (tags, media_type, media_url, row["id"]),
+                "update posts set hashtags=?, media_type=?, media_url=?, likes=?, comments=? "
+                "where id=?",
+                (tags, media_type, media_url, likes, comments, row["id"]),
             )
 
 
 def save_posts(db_path, posts):
-    """Inserta posts ignorando duplicados. Devuelve cuántos se agregaron."""
+    """Inserta o actualiza posts (upsert). Devuelve cuántos son nuevos.
+
+    Los posts ya vistos se actualizan (engagement, media, hashtags) para
+    reflejar su evolución; el conteo devuelto cuenta solo los nuevos.
+    """
     if not posts:
         return 0
     now = int(time.time())
@@ -105,26 +121,39 @@ def save_posts(db_path, posts):
             p["media_type"],
             p["media_url"],
             p.get("hashtags", ""),
+            p.get("likes", 0),
+            p.get("comments", 0),
             p["raw_json"],
+            now,
             now,
         )
         for p in posts
     ]
     con = sqlite3.connect(db_path)
-    before = con.total_changes
+    before = con.execute("select count(*) from posts").fetchone()[0]
     con.executemany(
         """
-        insert or ignore into posts
+        insert into posts
         (source, external_id, author, text, url, created_at, created_ts,
-         location, media_type, media_url, hashtags, raw_json, inserted_at)
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         location, media_type, media_url, hashtags, likes, comments,
+         raw_json, inserted_at, updated_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        on conflict(source, external_id) do update set
+            text=excluded.text,
+            media_type=excluded.media_type,
+            media_url=excluded.media_url,
+            hashtags=excluded.hashtags,
+            likes=excluded.likes,
+            comments=excluded.comments,
+            raw_json=excluded.raw_json,
+            updated_at=excluded.updated_at
         """,
         rows,
     )
     con.commit()
-    added = con.total_changes - before
+    after = con.execute("select count(*) from posts").fetchone()[0]
     con.close()
-    return added
+    return after - before
 
 
 def _order_clause():
@@ -173,10 +202,10 @@ def top_hashtags(db_path, since_ts=0, limit=20):
 
 
 def posts_for_text(db_path, since_ts=0):
-    """Devuelve (text, created_ts, inserted_at) para análisis de tendencias."""
+    """Devuelve filas para análisis de tendencias (texto, fechas, engagement)."""
     con = connect(db_path)
     rows = con.execute(
-        "select text, created_ts, inserted_at from posts "
+        "select text, created_ts, inserted_at, likes, comments from posts "
         "where max(created_ts, inserted_at) >= ?",
         (since_ts,),
     ).fetchall()

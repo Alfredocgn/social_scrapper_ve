@@ -4,7 +4,7 @@ import json
 import time
 import urllib.error
 
-from apify import fetch_instagram
+from apify import fetch_all
 from config import env_int
 from db import save_posts
 
@@ -13,8 +13,8 @@ STATE = {"status": "Esperando primera corrida de Apify.", "last_run_ts": 0}
 
 
 def run_once(db_path):
-    """Una corrida: trae datos de las fuentes y los guarda. Devuelve añadidos."""
-    return save_posts(db_path, fetch_instagram())
+    """Una corrida: trae datos de todas las fuentes y los guarda."""
+    return save_posts(db_path, fetch_all())
 
 
 def poll_loop(db_path):
