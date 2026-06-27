@@ -43,9 +43,11 @@ número de reproducciones (`videoViewCount` / `videoPlayCount`) cuando la fuente
 lo entrega, y rankea por vistas; si no hay vistas, cae a likes + comentarios.
 
 > Aviso: el scraper de Instagram por **hashtag** (actor `APIFY` por defecto) no
-> devuelve el contador de vistas. Para tener vistas reales de reels, registra una
-> segunda fuente con un actor especializado en reels (ver más abajo) que sí
-> exponga `videoViewCount`/`videoPlayCount`.
+> devuelve el contador de vistas. Para vistas reales está registrada (inactiva)
+> la fuente `instagram_reels`, que usa `apify/instagram-reel-scraper` —ese sí
+> expone `videoViewCount`/`videoPlayCount`—. Ojo: ese actor scrapea **por cuenta
+> o URL de reel, no por hashtag**, así que requiere una lista curada de cuentas.
+> Se activa al definir `REELS_TOKEN`, `REELS_ACTOR_ID` y `REELS_INPUT_JSON`.
 
 ### Múltiples fuentes
 

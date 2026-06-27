@@ -14,8 +14,11 @@ from normalize import flatten_items, normalize
 
 # (nombre_fuente, prefijo_env). Lee {PREFIJO}_TOKEN, {PREFIJO}_ACTOR_ID,
 # {PREFIJO}_INPUT_JSON. Instagram mantiene los nombres APIFY_* por compatibilidad.
+# La fuente de reels queda registrada pero inactiva hasta definir REELS_* (su
+# actor sí entrega vistas pero scrapea por cuenta/URL, no por hashtag).
 SOURCES = [
     ("instagram", "APIFY"),
+    ("instagram_reels", "REELS"),
 ]
 
 
