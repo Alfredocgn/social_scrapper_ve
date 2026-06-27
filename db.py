@@ -5,7 +5,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from normalize import extract_hashtags
+from normalize import detect_media, extract_hashtags
 
 # Columnas que pueden faltar en bases creadas con versiones anteriores.
 MIGRATIONS = {
@@ -49,7 +49,7 @@ def init_db(path):
         """
     )
     _apply_migrations(con)
-    _backfill_hashtags(con)
+    _backfill(con)
     con.commit()
     con.close()
 
@@ -63,20 +63,28 @@ def _apply_migrations(con):
             con.execute(statement)
 
 
-def _backfill_hashtags(con):
-    """Rellena hashtags vacíos desde el raw_json (idempotente)."""
+def _backfill(con):
+    """Recalcula hashtags y tipo de media desde el raw_json (idempotente).
+
+    Permite que datos guardados con versiones anteriores se beneficien de
+    mejoras en la detección de media o de hashtags sin volver a scrapear.
+    """
     con.row_factory = sqlite3.Row
     rows = con.execute(
-        "select id, text, raw_json from posts where hashtags = ''"
+        "select id, text, hashtags, media_type, media_url, raw_json from posts"
     ).fetchall()
     for row in rows:
         try:
             item = json.loads(row["raw_json"])
         except (ValueError, TypeError):
-            item = {}
-        tags = extract_hashtags(item, row["text"])
-        if tags:
-            con.execute("update posts set hashtags = ? where id = ?", (tags, row["id"]))
+            continue
+        tags = row["hashtags"] or extract_hashtags(item, row["text"])
+        media_type, media_url = detect_media(item)
+        if (tags, media_type, media_url) != (row["hashtags"], row["media_type"], row["media_url"]):
+            con.execute(
+                "update posts set hashtags = ?, media_type = ?, media_url = ? where id = ?",
+                (tags, media_type, media_url, row["id"]),
+            )
 
 
 def save_posts(db_path, posts):

@@ -46,6 +46,14 @@ def detect_media(item):
     video_url = pick(item, ["videoUrl", "video_url", "videoUrlHd"])
     image_url = pick(item, ["displayUrl", "display_url", "thumbnailUrl", "imageUrl"])
 
+    # Los carruseles (Sidecar) pueden contener videos en childPosts.
+    if not video_url:
+        for child in item.get("childPosts") or []:
+            child_video = pick(child, ["videoUrl", "video_url", "videoUrlHd"])
+            if child_video:
+                video_url = child_video
+                break
+
     if video_url or "video" in raw_type or "clip" in raw_type or "igtv" in raw_type:
         return "video", video_url or image_url
 

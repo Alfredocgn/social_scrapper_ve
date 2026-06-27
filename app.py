@@ -32,6 +32,10 @@ def self_test():
         assert detect_media({"videoUrl": "v.mp4"})[0] == "video"
         assert detect_media({"displayUrl": "i.jpg"})[0] == "image"
         assert detect_media({"caption": "solo texto"})[0] == "text"
+        # Video escondido en un carrusel (Sidecar).
+        carousel = {"type": "Sidecar", "displayUrl": "i.jpg",
+                    "childPosts": [{"type": "Image"}, {"type": "Video", "videoUrl": "c.mp4"}]}
+        assert detect_media(carousel) == ("video", "c.mp4")
 
         # Hashtags: desde campo estructurado y desde texto.
         assert extract_hashtags({"hashtags": ["Sismo", "Venezuela"]}, "") == "#sismo #venezuela"
