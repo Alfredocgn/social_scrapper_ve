@@ -27,11 +27,22 @@ python3 app.py --self-test
 2. **Centraliza** — guarda en SQLite evitando duplicados (`unique(source, external_id)`)
    y registra el tipo de media y la fecha real del post.
 3. **Analiza tendencias** — calcula los términos más hablados *recientemente*,
-   ponderando cada post por su frescura (decaimiento por vida media).
-4. **Categoriza** — guarda los `hashtags` de cada post y muestra los más
-   frecuentes como categorías navegables.
-5. **Muestra** — dashboard auto-refrescante con resumen, tendencias, categorías
+   ponderando cada post por su frescura (decaimiento por vida media) y por su
+   engagement (likes + comentarios).
+4. **Categoriza** — guarda los `hashtags` (normalizados sin acentos ni emojis
+   para unir variantes) y muestra los más frecuentes como categorías navegables.
+5. **Refresca** — los posts ya vistos se actualizan (upsert) para reflejar su
+   evolución de engagement, no solo la primera captura.
+6. **Muestra** — dashboard auto-refrescante con resumen, tendencias, categorías
    y secciones por tipo de media. También expone `GET /api/trends` (JSON).
+
+### Múltiples fuentes
+
+`apify.py` define las fuentes en `SOURCES` como `(nombre, prefijo_env)`. Cada
+fuente lee `{PREFIJO}_TOKEN`, `{PREFIJO}_ACTOR_ID` y `{PREFIJO}_INPUT_JSON`.
+Instagram usa el prefijo `APIFY`. Para agregar otra (p. ej. TikTok) basta con
+registrar `("tiktok", "TIKTOK")` y definir esas tres variables; el resto del
+pipeline (normalización, dedup, tendencias) funciona igual al ser agnóstico.
 
 ### Filtrado por categoría
 
