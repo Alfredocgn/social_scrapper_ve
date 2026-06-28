@@ -11,10 +11,14 @@ OpenRouter, Groq, modelos locales, etc.). Se configura por entorno:
 """
 import json
 import re
+import time
 import urllib.error
 import urllib.request
 
 from config import env_str
+
+# Último error de la llamada (para diagnóstico desde la UI/logs).
+LAST_ERROR = ""
 
 # Inferencia de endpoint por prefijo de la llave (override con LLM_BASE_URL).
 KEY_PREFIXES = {
@@ -71,26 +75,48 @@ def _extract_json(text):
         return None
 
 
-def chat_json(system, user):
+def chat_json(system, user, retries=3):
     """Pide al modelo una respuesta JSON y la devuelve como dict (o None).
 
-    Reintenta una vez sin `response_format` por si el proveedor no lo soporta,
-    y parsea de forma defensiva.
+    Maneja errores transitorios (429/5xx) con reintento y backoff, y degrada
+    sin `response_format` si el proveedor no lo soporta (400). Guarda el último
+    error en LAST_ERROR para diagnóstico.
     """
+    global LAST_ERROR
     resolved = _resolve()
     if not resolved:
         return None
     base_url, key, model = resolved
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    base_payload = {"model": model, "messages": messages, "max_tokens": 1024}
+    use_format = True
 
-    for payload in ({**base_payload, "response_format": {"type": "json_object"}}, base_payload):
+    for attempt in range(retries):
+        payload = {"model": model, "messages": messages, "max_tokens": 1024}
+        if use_format:
+            payload["response_format"] = {"type": "json_object"}
         try:
             res = _post(base_url, key, payload)
-        except urllib.error.HTTPError:
-            continue  # proveedor pudo rechazar response_format: reintenta sin él
+        except urllib.error.HTTPError as exc:
+            LAST_ERROR = f"HTTP {exc.code}"
+            if exc.code == 400 and use_format:
+                use_format = False  # el proveedor no soporta response_format
+                continue
+            if exc.code in (429, 500, 502, 503, 529):
+                time.sleep(2 * (attempt + 1))  # transitorio: backoff y reintenta
+                continue
+            return None
+        except urllib.error.URLError as exc:
+            LAST_ERROR = str(exc)
+            return None
+
         content = (res.get("choices") or [{}])[0].get("message", {}).get("content", "")
         parsed = _extract_json(content)
         if parsed is not None:
+            LAST_ERROR = ""
             return parsed
+        if use_format:
+            use_format = False  # respuesta sin JSON válido: reintenta sin formato
+            continue
+        LAST_ERROR = "respuesta sin JSON"
+        return None
     return None
