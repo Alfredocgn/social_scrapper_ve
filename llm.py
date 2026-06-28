@@ -55,7 +55,12 @@ def _post(base_url, key, payload):
     req = urllib.request.Request(
         f"{base_url}/chat/completions",
         data=data,
-        headers={"content-type": "application/json", "authorization": f"Bearer {key}"},
+        headers={
+            "content-type": "application/json",
+            "authorization": f"Bearer {key}",
+            # Algunos proveedores (Cloudflare) bloquean el User-Agent por defecto.
+            "user-agent": "social-scrapper-ve/1.0",
+        },
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=60) as res:
