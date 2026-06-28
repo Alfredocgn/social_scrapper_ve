@@ -207,6 +207,8 @@ main {{ max-width:980px; margin:0 auto; padding:20px; }}
 .stat {{ background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 14px; }}
 .stat b {{ display:block; font-size:22px; }}
 .stat span {{ color:#5f6368; font-size:12px; }}
+.stat.alerta-stat {{ text-decoration:none; color:inherit; border-color:#fecaca; background:#fff1f2; }}
+.stat.alerta-stat b {{ color:#dc2626; }}
 .chips {{ display:flex; flex-wrap:wrap; gap:8px; }}
 .chip {{ background:#ecfdf5; border:1px solid #a7f3d0; color:var(--accent); border-radius:999px; padding:6px 12px; font-size:14px; text-decoration:none; cursor:pointer; }}
 .chip:hover {{ background:#d1fae5; }}
@@ -243,12 +245,13 @@ small {{ color:#5f6368; }}
   {filter_banner}
   <div class="summary">
     <div class="stat"><b>{total}</b><span>publicaciones</span></div>
+    <a class="stat alerta-stat" href="#alertas"><b>{len(alertas)}</b><span>🆘 pedidos de ayuda</span></a>
     <div class="stat"><b>{counts.get('video', 0)}</b><span>videos</span></div>
     <div class="stat"><b>{counts.get('image', 0)}</b><span>imágenes</span></div>
     <div class="stat"><b>{counts.get('text', 0)}</b><span>texto</span></div>
   </div>
 
-  <section class="alertas-sec">
+  <section class="alertas-sec" id="alertas">
     <h2>🆘 Pedidos de ayuda <span class="count">{len(alertas)}</span></h2>
     <p class="aviso">Detectado por IA como apoyo a la priorización — verifica siempre en la fuente.</p>
     {_alerts_html(alertas, now)}

@@ -4,7 +4,10 @@ import json
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
 
+import time
+
 from config import env_int
+from db import urgent_alerts
 from render import render_dashboard
 from trends import compute_trends
 
@@ -25,6 +28,25 @@ class Handler(BaseHTTPRequestHandler):
                 half_life_hours=env_int("TREND_HALF_LIFE_HOURS", 6),
             )
             self._send_json({"trends": trends})
+        elif self.path.startswith("/api/alertas"):
+            since_ts = int(time.time()) - env_int("TREND_WINDOW_HOURS", 24) * 3600
+            rows = urgent_alerts(self.db_path, since_ts=since_ts)
+            alertas = [
+                {
+                    "tipo": r["tipo"],
+                    "ubicacion": r["ubicacion"],
+                    "municipio": r["municipio"],
+                    "estado": r["estado"],
+                    "personas_afectadas": r["personas_afectadas"],
+                    "contacto": r["contacto"],
+                    "resumen": r["resumen"],
+                    "confianza": r["confianza"],
+                    "url": r["post_url"],
+                    "autor": r["post_author"],
+                }
+                for r in rows
+            ]
+            self._send_json({"alertas": alertas})
         else:
             self.send_error(404)
 
