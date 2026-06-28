@@ -33,8 +33,25 @@ python3 app.py --self-test
    para unir variantes) y muestra los más frecuentes como categorías navegables.
 5. **Refresca** — los posts ya vistos se actualizan (upsert) para reflejar su
    evolución de engagement, no solo la primera captura.
-6. **Muestra** — dashboard auto-refrescante con resumen, tendencias, categorías
-   y secciones por tipo de media. También expone `GET /api/trends` (JSON).
+6. **Detecta pedidos de ayuda** — analiza con IA cada post nuevo y extrae
+   pedidos concretos (personas atrapadas, desaparecidos, rescates, refugios,
+   suministros) con ubicación, contacto y nivel de confianza.
+7. **Muestra** — dashboard auto-refrescante con pedidos de ayuda, resumen,
+   tendencias, categorías y secciones por tipo de media. También expone
+   `GET /api/trends` (JSON).
+
+### Pedidos de ayuda (análisis con IA)
+
+El módulo `analyze.py` manda cada post nuevo a un LLM y guarda una alerta
+estructurada en la tabla `alertas`. La sección **🆘 Pedidos de ayuda** agrupa los
+urgentes por municipio. Es una **ayuda a la priorización para humanos**, no una
+fuente autoritativa: cada alerta muestra su nivel de confianza y enlaza a la fuente.
+
+El cliente LLM (`llm.py`) es **genérico y compatible con OpenAI** (cero
+dependencias, vía `urllib`): funciona con OpenAI, OpenRouter, Groq, modelos
+locales, etc. Se configura con `LLM_API_KEY` (si falta, el análisis queda
+inactivo), `LLM_MODEL` y, opcionalmente, `LLM_BASE_URL` —si no se define, se
+infiere por el prefijo de la llave—.
 
 ### Reels y vistas
 
@@ -72,8 +89,10 @@ permite quitar el filtro.
 | `config.py`    | Carga de `.env` y helpers de entorno.                       |
 | `db.py`        | Esquema, migración suave, consultas y filtrado SQLite.      |
 | `normalize.py` | Normalización + detección de media, fecha y hashtags.       |
-| `apify.py`     | Fuente de datos: ejecución del actor de Apify.              |
+| `apify.py`     | Fuentes de datos: ejecución de actores de Apify.            |
 | `trends.py`    | Cálculo de trending topics ponderado por recencia.          |
+| `llm.py`       | Cliente LLM genérico compatible con OpenAI (cero deps).     |
+| `analyze.py`   | Análisis con IA: extracción de pedidos de ayuda.            |
 | `poller.py`    | Loop de polling en background.                              |
 | `render.py`    | Plantillas HTML del dashboard.                              |
 | `server.py`    | Servidor HTTP y rutas (`/`, `/api/trends`).                |
@@ -95,6 +114,10 @@ permite quitar el filtro.
 | `UI_REFRESH_SECONDS`    | Auto-refresco del dashboard (default 15).                |
 | `TREND_WINDOW_HOURS`    | Ventana de tiempo para tendencias (default 24).          |
 | `TREND_HALF_LIFE_HOURS` | Vida media del peso por recencia (default 6).            |
+| `LLM_API_KEY`           | Llave del proveedor LLM (vacío = análisis inactivo).     |
+| `LLM_BASE_URL`          | Endpoint LLM; si falta se infiere por el prefijo de la llave. |
+| `LLM_MODEL`             | Modelo a usar (ej. `anthropic/claude-opus-4-8`).         |
+| `ANALYZE_LIMIT`         | Máx. posts analizados por corrida (default 20).          |
 
 Esto es polling, no streaming real: Apify entrega datos por corrida del actor.
 Baja `POLL_SECONDS` si necesitas más frescura y tu cuota lo permite.

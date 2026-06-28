@@ -7,7 +7,7 @@ import threading
 from http.server import ThreadingHTTPServer
 
 from config import env_int, load_env
-from db import init_db, latest_posts, save_posts, top_hashtags, top_reels
+from db import init_db, latest_posts, save_posts, top_hashtags, top_reels, urgent_alerts
 from normalize import detect_media, extract_hashtags, fold, normalize
 from poller import poll_loop
 from server import Handler
@@ -79,6 +79,24 @@ def self_test():
         assert len(latest_posts(db, query="noexiste")) == 0
         tags = dict(top_hashtags(db))
         assert tags.get("#sismo", 0) >= 3, tags
+
+        # Análisis de pedidos de ayuda (LLM mockeado, sin gastar).
+        import analyze
+        import llm
+        llm.chat_json = lambda system, user: {
+            "es_urgente": True, "tipo": "persona_atrapada",
+            "ubicacion": "Av. Bolívar", "municipio": "Libertador", "estado": "Distrito Capital",
+            "personas_afectadas": 3, "contacto": "0412-0000000",
+            "resumen": "Familia atrapada tras derrumbe", "confianza": 0.9,
+        }
+        llm.is_configured = lambda: True
+        alerta = analyze.analyze_text("Ayuda! personas atrapadas en Av. Bolívar")
+        assert alerta["es_urgente"] and alerta["tipo"] == "persona_atrapada"
+        assert analyze.normalize_alert({"tipo": "raro"})["tipo"] == "info"
+        save_posts(db, [normalize("instagram", {"id": "sos1", "caption": "personas atrapadas en Petare"})])
+        assert analyze.analyze_pending(db) >= 1
+        al = urgent_alerts(db)
+        assert al and al[0]["tipo"] == "persona_atrapada", al
 
         print("self-test OK")
 

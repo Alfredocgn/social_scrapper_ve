@@ -5,7 +5,7 @@ import time
 import urllib.parse
 
 from config import env_int
-from db import counts_by_media, latest_posts, top_hashtags, top_reels
+from db import counts_by_media, latest_posts, top_hashtags, top_reels, urgent_alerts
 from poller import STATE
 from trends import compute_trends
 
@@ -81,6 +81,54 @@ def _card(row, now):
     """
 
 
+TIPO_LABEL = {
+    "persona_atrapada": "🆘 Atrapados",
+    "desaparecido": "❓ Desaparecido",
+    "rescate": "🚑 Rescate",
+    "refugio": "🏠 Refugio",
+    "suministros": "📦 Suministros",
+    "info": "ℹ️ Info",
+}
+
+
+def _alert_card(row, now):
+    """Renderiza un pedido de ayuda."""
+    url = html.escape(row["post_url"] or "")
+    link = f'<a href="{url}" target="_blank" rel="noreferrer">ver fuente</a>' if url else ""
+    tipo = TIPO_LABEL.get(row["tipo"], "ℹ️ Info")
+    age = _fmt_age(row["post_ts"], now)
+    ubic = html.escape(row["ubicacion"] or row["municipio"] or "ubicación no especificada")
+    personas = f' · 👤 {row["personas_afectadas"]}' if row["personas_afectadas"] else ""
+    contacto = f' · 📞 {html.escape(row["contacto"])}' if row["contacto"] else ""
+    conf = int(round((row["confianza"] or 0) * 100))
+    return f"""
+    <article class="alerta">
+      <div class="meta">
+        <span class="badge alerta">{tipo}</span>
+        <b>{ubic}</b>
+        <span class="age">{age}</span>
+        <span class="conf">confianza {conf}%</span> {link}
+      </div>
+      <p>{html.escape(row['resumen'] or '')}</p>
+      <small>@{html.escape(row['post_author'] or 'sin_autor')}{personas}{contacto}</small>
+    </article>
+    """
+
+
+def _alerts_html(alerts, now):
+    """Bloque de pedidos de ayuda agrupados por municipio."""
+    if not alerts:
+        return "<p class='empty'>Sin pedidos de ayuda detectados todavía.</p>"
+    grupos = {}
+    for a in alerts:
+        grupos.setdefault(a["municipio"] or "Sin municipio", []).append(a)
+    bloques = []
+    for municipio, items in grupos.items():
+        cards = "".join(_alert_card(a, now) for a in items)
+        bloques.append(f'<h3>📍 {html.escape(municipio)} <span class="count">{len(items)}</span></h3>{cards}')
+    return "".join(bloques)
+
+
 def _section(title, rows, now, empty="Sin datos todavía."):
     """Bloque con título y lista de tarjetas."""
     cards = "".join(_card(r, now) for r in rows) or f"<p class='empty'>{empty}</p>"
@@ -122,6 +170,7 @@ def render_dashboard(db_path, query=None):
         half_life_hours=env_int("TREND_HALF_LIFE_HOURS", 6),
     )
     categories = top_hashtags(db_path, since_ts=since_ts, limit=20)
+    alertas = urgent_alerts(db_path, since_ts=since_ts, limit=50)
 
     counts = counts_by_media(db_path, since_ts=since_ts, query=query)
     reels = top_reels(db_path, since_ts=since_ts, limit=15)
@@ -176,6 +225,11 @@ article img, article video {{ max-width:100%; border-radius:6px; margin:10px 0; 
 .badge {{ font-size:12px; padding:2px 8px; border-radius:6px; background:#eee; }}
 .badge.video {{ background:#fee2e2; }}
 .badge.image {{ background:#dbeafe; }}
+.badge.alerta {{ background:#fee2e2; color:#991b1b; }}
+article.alerta {{ border-left:4px solid #dc2626; }}
+.alertas-sec h3 {{ font-size:14px; margin:14px 0 8px; color:#7f1d1d; }}
+.alertas-sec .aviso {{ color:#9a3412; font-size:12px; background:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:8px 10px; }}
+.conf {{ color:#5f6368; font-size:12px; }}
 p {{ white-space:pre-wrap; line-height:1.45; }}
 a {{ color:var(--accent); }}
 small {{ color:#5f6368; }}
@@ -193,6 +247,12 @@ small {{ color:#5f6368; }}
     <div class="stat"><b>{counts.get('image', 0)}</b><span>imágenes</span></div>
     <div class="stat"><b>{counts.get('text', 0)}</b><span>texto</span></div>
   </div>
+
+  <section class="alertas-sec">
+    <h2>🆘 Pedidos de ayuda <span class="count">{len(alertas)}</span></h2>
+    <p class="aviso">Detectado por IA como apoyo a la priorización — verifica siempre en la fuente.</p>
+    {_alerts_html(alertas, now)}
+  </section>
 
   <section>
     <h2>🏷️ Categorías (hashtags)</h2>

@@ -56,6 +56,24 @@ def init_db(path):
         )
         """
     )
+    con.execute(
+        """
+        create table if not exists alertas (
+            id integer primary key,
+            post_id integer not null unique references posts(id),
+            es_urgente integer not null default 0,
+            tipo text not null default 'info',
+            ubicacion text not null default '',
+            municipio text not null default '',
+            estado text not null default '',
+            personas_afectadas integer,
+            contacto text not null default '',
+            resumen text not null default '',
+            confianza real not null default 0,
+            inserted_at integer not null
+        )
+        """
+    )
     _apply_migrations(con)
     _backfill(con)
     con.commit()
@@ -224,6 +242,65 @@ def top_reels(db_path, since_ts=0, limit=15):
         "select * from posts where media_type = 'video' "
         "and max(created_ts, inserted_at) >= ? "
         "order by views desc, likes + comments desc, id desc limit ?",
+        (since_ts, limit),
+    ).fetchall()
+    con.close()
+    return rows
+
+
+def posts_pending_analysis(db_path, limit=20, since_ts=0):
+    """Posts recientes que aún no tienen alerta analizada."""
+    con = connect(db_path)
+    rows = con.execute(
+        "select p.id, p.text from posts p "
+        "left join alertas a on a.post_id = p.id "
+        "where a.id is null and p.text != '' "
+        "and max(p.created_ts, p.inserted_at) >= ? "
+        "order by max(p.created_ts, p.inserted_at) desc, p.id desc limit ?",
+        (since_ts, limit),
+    ).fetchall()
+    con.close()
+    return rows
+
+
+def save_alert(db_path, post_id, alert):
+    """Guarda (o reemplaza) la alerta de un post."""
+    con = sqlite3.connect(db_path)
+    con.execute(
+        """
+        insert or replace into alertas
+        (post_id, es_urgente, tipo, ubicacion, municipio, estado,
+         personas_afectadas, contacto, resumen, confianza, inserted_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            post_id,
+            1 if alert["es_urgente"] else 0,
+            alert["tipo"],
+            alert["ubicacion"],
+            alert["municipio"],
+            alert["estado"],
+            alert["personas_afectadas"],
+            alert["contacto"],
+            alert["resumen"],
+            alert["confianza"],
+            int(time.time()),
+        ),
+    )
+    con.commit()
+    con.close()
+
+
+def urgent_alerts(db_path, since_ts=0, limit=50):
+    """Pedidos de ayuda urgentes con datos del post, por recencia."""
+    con = connect(db_path)
+    rows = con.execute(
+        "select a.*, p.url as post_url, p.author as post_author, "
+        "p.source as post_source, "
+        "max(p.created_ts, p.inserted_at) as post_ts "
+        "from alertas a join posts p on p.id = a.post_id "
+        "where a.es_urgente = 1 and max(p.created_ts, p.inserted_at) >= ? "
+        "order by post_ts desc, a.confianza desc limit ?",
         (since_ts, limit),
     ).fetchall()
     con.close()
